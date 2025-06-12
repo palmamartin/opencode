@@ -234,15 +234,31 @@ func setProviderDefaults() {
 		viper.SetDefault("providers.azure.apiKey", os.Getenv("AZURE_OPENAI_API_KEY"))
 	}
 
+	// For Copilot, we don't need a traditional API key
+	// Authentication is handled via OAuth tokens
+	// Check if copilot provider exists and is not disabled
+	if !viper.GetBool("providers.copilot.disabled") {
+		viper.Set("providers.copilot.apiKey", "copilot-available")
+	}
+
 	// Use this order to set the default models
-	// 1. Anthropic
-	// 2. OpenAI
-	// 3. Google Gemini
-	// 4. Groq
-	// 5. OpenRouter
-	// 6. AWS Bedrock
-	// 7. Azure
-	// 8. Google Cloud VertexAI
+	// 1. Copilot (free with subscription)
+	// 2. Anthropic
+	// 3. OpenAI
+	// 4. Google Gemini
+	// 5. Groq
+	// 6. OpenRouter
+	// 7. AWS Bedrock
+	// 8. Azure
+	// 9. Google Cloud VertexAI
+
+	// Copilot configuration (highest priority as it's free with subscription)
+	if !viper.GetBool("providers.copilot.disabled") {
+		viper.SetDefault("agents.primary.model", "copilot.gpt-4.1")
+		viper.SetDefault("agents.task.model", "copilot.claude-3.7-sonnet")
+		viper.SetDefault("agents.title.model", "copilot.gpt-4o-mini")
+		return
+	}
 
 	// Anthropic configuration
 	if key := viper.GetString("providers.anthropic.apiKey"); strings.TrimSpace(key) != "" {
@@ -575,6 +591,8 @@ func getProviderAPIKey(provider models.ModelProvider) string {
 		return os.Getenv("AZURE_OPENAI_API_KEY")
 	case models.ProviderOpenRouter:
 		return os.Getenv("OPENROUTER_API_KEY")
+	case models.ProviderCopilot:
+		return "copilot-available"
 	case models.ProviderBedrock:
 		if hasAWSCredentials() {
 			return "aws-credentials-available"
@@ -590,6 +608,34 @@ func getProviderAPIKey(provider models.ModelProvider) string {
 // setDefaultModelForAgent sets a default model for an agent based on available providers
 func setDefaultModelForAgent(agent AgentName) bool {
 	// Check providers in order of preference
+
+	// 1. Check Copilot first (free with subscription)
+	if !cfg.Providers[models.ProviderCopilot].Disabled {
+		var model models.ModelID
+		maxTokens := int64(5000)
+		reasoningEffort := ""
+
+		switch agent {
+		case AgentTitle:
+			model = "copilot.gpt-4o-mini"
+			maxTokens = 80
+		case AgentTask:
+			model = "copilot.claude-3.7-sonnet"
+			maxTokens = 8192
+			reasoningEffort = "medium"
+		default:
+			model = "copilot.gpt-4.1"
+			reasoningEffort = "medium"
+		}
+
+		cfg.Agents[agent] = Agent{
+			Model:           model,
+			MaxTokens:       maxTokens,
+			ReasoningEffort: reasoningEffort,
+		}
+		return true
+	}
+
 	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
 		maxTokens := int64(5000)
 		if agent == AgentTitle {

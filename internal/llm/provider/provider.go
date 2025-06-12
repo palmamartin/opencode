@@ -148,6 +148,11 @@ func NewProvider(providerName models.ModelProvider, opts ...ProviderClientOption
 			options: clientOptions,
 			client:  newOpenAIClient(clientOptions),
 		}, nil
+	case models.ProviderCopilot:
+		return &baseProvider[CopilotClient]{
+			options: clientOptions,
+			client:  newCopilotClient(clientOptions),
+		}, nil
 
 	case models.ProviderMock:
 		// TODO: implement mock client for test
